@@ -25,3 +25,7 @@ separators = [
 
 # 检索返回匹配的文档数量
 similarity_threshold = 2
+
+# 模型配置
+embedding_model_name = "text-embedding-v4"
+chat_model_name = "qwen3-max"
