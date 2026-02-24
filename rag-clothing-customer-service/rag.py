@@ -1,11 +1,14 @@
 from vector_stores import VectorStoreService
 from langchain_community.embeddings import DashScopeEmbeddings
 import config_data as config
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.chat_models.tongyi import ChatTongyi
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
+from file_history_store import get_history
+import json
 
 
 def print_prompt(prompt):
@@ -15,48 +18,157 @@ def print_prompt(prompt):
     return prompt
 
 
+def debug_runnable(name: str, pretty: bool = False):
+    def _inner(x):
+        print(f"\n[DEBUG][{name}]")
+        
+        if pretty:
+            # 处理 Document 对象（单个）
+            if isinstance(x, Document):
+                doc_dict = {
+                    "page_content": x.page_content,
+                    "metadata": x.metadata
+                }
+                print(json.dumps(doc_dict, indent=2, ensure_ascii=False))
+            # 处理 Document 列表
+            elif isinstance(x, list) and len(x) > 0 and isinstance(x[0], Document):
+                docs_list = [
+                    {
+                        "page_content": doc.page_content,
+                        "metadata": doc.metadata
+                    }
+                    for doc in x
+                ]
+                print(json.dumps(docs_list, indent=2, ensure_ascii=False))
+            # 处理普通的 dict 或 list
+            elif isinstance(x, (dict, list)):
+                print(json.dumps(x, indent=2, ensure_ascii=False))
+            else:
+                print(x)
+        else:
+            print(x)
+        
+        print(f"[DEBUG][{name}] 结束\n")
+        return x
+
+    return RunnableLambda(_inner)
+
+
+def extract_input_field(x):
+    """
+    从 RunnableWithMessageHistory 传入的字典中提取真正的用户查询字符串。
+    - 如果 x 是形如 {"input": "...", "history": [...]} 的字典，则返回 x["input"]
+    - 否则原样返回（兼容直接传字符串的情况）
+    """
+    if isinstance(x, dict) and "input" in x:
+        return x["input"]
+    return x
+
+
 class RagService(object):
-    def __init__(self):
+    def __init__(self, storage_path: str = "./chat_history"):
+        """
+        初始化 RagService。
+
+        参数:
+            storage_path: 会话历史记录的存储路径，默认为 "./chat_history"
+        """
         self.vector_service = VectorStoreService(
             embedding=DashScopeEmbeddings(model=config.embedding_model_name)
         )
         self.prompt_template = ChatPromptTemplate.from_messages(
             [
                 ("system", "以我提供的已知参考资料为主，简洁和专业的回答用户问题。参考资料:{context}。"),
+                ("system", "并且我提供用户的对话历史记录,如下:"),
+                MessagesPlaceholder("history"),
                 ("user", "请回答用户提问:{input}")
             ]
         )
         self.chat_model = ChatTongyi(model=config.chat_model_name)
+        self.storage_path = storage_path
 
     def _get_chain(self):
-        """获取最终的执行链"""
+        """获取最终的执行链（不带历史记录）
+
+        整体上，这个链的输入是「用户问题字符串」，输出是「LLM 的回答字符串」。
+        为了让数据流更清晰，这里在构造链的时候对中间字段做了一些约定：
+        - user_input: 用户的原始提问（str）
+        - retrieved_context: 根据用户提问从向量库检索出的参考资料文本（str）
+        这两个字段最终会作为 prompt 模板中的 {input} 和 {context}。
+        """
         retriever = self.vector_service.get_retriever()
 
         def format_document(docs: list[Document]):
             if not docs:
                 return "无相关参考资料"
+            # 将检索到的多个文档片段拼接成一个字符串，作为 LLM 的「参考资料上下文」
             formatted_str = ""
             for doc in docs:
                 formatted_str += f"文档片段:{doc.page_content}\n文档元数据:{doc.metadata}\n\n"
             return formatted_str
 
-        chain = (
-            {
-                "input": RunnablePassthrough(),
-                "context": retriever | format_document
-            }
+        # 1. inputs_mapping 负责把「同一个用户输入」拆成两个键：
+        #    - "input": 原样透传给 prompt，用于 {input}
+        #    - "context": 先走 retriever 再走 format_document，得到检索到的参考资料字符串，用于 {context}
+        inputs_mapping = {
+            # RunnablePassthrough: 不做任何处理，原样返回上游输入（用户问题字符串）
+            # 这里在末尾加上 debug_runnable，观察 input 分支的输出
+            "input": RunnablePassthrough() | debug_runnable("inputs_mapping.input", pretty=True),
+            # retriever | format_document: 先用向量检索器查相关文档，再格式化成一段文本
+            # 在 retriever 前后、format_document 后分别加上 debug_runnable
+            "context": debug_runnable("inputs_mapping.context.before_retriever", pretty=True) \
+                       | RunnableLambda(extract_input_field) \
+                       | debug_runnable("inputs_mapping.context.after_extract_input") \
+                       | retriever \
+                       | debug_runnable("inputs_mapping.context.after_retriever", pretty=True) \
+                       | format_document \
+                       | debug_runnable("inputs_mapping.context.after_format_document"),
+        }
+
+        # 2. 完整链：
+        #    用户问题(str)
+        #      -> inputs_mapping 生成 {"input": 用户问题, "context": 检索出的参考资料文本}
+        #      -> prompt_template 组装成 ChatPrompt
+        #      -> print_prompt 打印完整提示词（调试用）
+        #      -> chat_model 调用大模型
+        #      -> StrOutputParser() 把大模型输出转成纯字符串
+        rag_chain = (
+            debug_runnable("chain.input", pretty=True)               # 整个链最开始的原始输入
+            | inputs_mapping
+            | debug_runnable("chain.after_inputs_mapping", pretty=True)  # dict: {"input": ..., "context": ...}
             | self.prompt_template
-            | print_prompt
+            | debug_runnable("chain.after_prompt_template")  # ChatPrompt
+            | print_prompt                                  # 已有的 prompt 打印
+            | debug_runnable("chain.after_print_prompt")    # 打印后的 prompt（同上）
             | self.chat_model
+            | debug_runnable("chain.after_chat_model")      # LLM 输出（通常是 Message/ChatResult）
             | StrOutputParser()
+            | debug_runnable("chain.after_output_parser")   # 最终字符串输出
         )
-        return chain
+        return rag_chain
+
+    def get_conversation_chain(self):
+        """获取带历史记录的对话链"""
+        base_chain = self._get_chain()
+        
+        # 创建 get_history 函数，使用当前实例的 storage_path
+        def get_history_func(session_id: str):
+            return get_history(session_id, self.storage_path)
+        
+        # 使用 RunnableWithMessageHistory 创建带历史记录的链
+        conversation_chain = RunnableWithMessageHistory(
+            base_chain,  # 被附加历史消息的 Runnable，通常是 chain
+            get_history_func,  # 获取指定会话ID的历史会话的函数
+            input_messages_key="input",  # 声明用户输入消息在模板中的占位符
+            history_messages_key="history",  # 声明历史消息在模板中的占位符
+        )
+        return conversation_chain
 
 
 if __name__ == "__main__":
     """
     简单的测试代码
-    测试 RagService 的初始化、链获取和查询功能
+    测试 RagService 的初始化、链获取和查询功能（带历史记录）
     无论从哪个路径执行本文件，都会先将当前工作目录切换为脚本所在目录。
     """
     import os
@@ -80,7 +192,7 @@ if __name__ == "__main__":
     
     try:
         print("=" * 50)
-        print("开始测试 RagService")
+        print("开始测试 RagService（带历史记录功能）")
         print("=" * 50)
         
         # 1. 初始化 RagService
@@ -89,27 +201,80 @@ if __name__ == "__main__":
         print("✓ RagService 初始化成功")
         print(f"  - Embedding model: {config.embedding_model_name}")
         print(f"  - Chat model: {config.chat_model_name}")
+        print(f"  - 会话历史存储路径: {rag_service.storage_path}")
         
-        # 2. 获取执行链
-        print("\n[2] 获取执行链...")
-        chain = rag_service._get_chain()
-        print("✓ 执行链获取成功")
+        # 2. 获取带历史记录的对话链
+        print("\n[2] 获取带历史记录的对话链...")
+        conversation_chain = rag_service.get_conversation_chain()
+        print("✓ 对话链获取成功")
         
-        # 3. 测试查询功能
-        print("\n[3] 测试查询功能...")
-        test_query = "我身高180cm，140kg，我应该穿什么尺码的衣服？"
-        print(f"  查询问题: {test_query}")
+        # 3. 配置会话ID
+        session_id = "test_user_001"
+        session_config = {"configurable": {"session_id": session_id}}
+        print(f"\n[3] 配置会话ID: {session_id}")
+        print(f"  session_config = {session_config}")
+        
+        # 4. 测试多轮对话功能
+        print("\n[4] 测试多轮对话功能...")
+        print("=" * 50)
+        
+        # 第一轮对话
+        print("\n【第一轮对话】")
+        test_query_1 = "我身高180cm，140kg，我应该穿什么尺码的衣服？"
+        print(f"  用户提问: {test_query_1}")
+        print("-" * 50)
         try:
-            result = chain.invoke(test_query)
-            print(f"✓ 查询成功")
-            print(f"  回答: {result}")
+            result_1 = conversation_chain.invoke(
+                {"input": test_query_1},
+                config=session_config
+            )
+            print(f"✓ 第一轮对话成功")
+            print(f"  回答: {result_1}")
         except Exception as e:
             print(f"  注意: 查询时出现异常（可能是向量库为空或 API 配置问题）: {str(e)}")
             print("  这是正常的（如果还没有上传文档或 API key 未配置）")
+        print("-" * 50)
+        
+        # 第二轮对话（测试历史记忆）
+        print("\n【第二轮对话】")
+        test_query_2 = "我刚才问的身高和体重是多少？"
+        print(f"  用户提问: {test_query_2}")
+        print("-" * 50)
+        try:
+            result_2 = conversation_chain.invoke(
+                {"input": test_query_2},
+                config=session_config
+            )
+            print(f"✓ 第二轮对话成功")
+            print(f"  回答: {result_2}")
+            print("  说明: 模型应该能够记住第一轮对话中的身高和体重信息")
+        except Exception as e:
+            print(f"  注意: 查询时出现异常: {str(e)}")
+        print("-" * 50)
+        
+        # 第三轮对话（继续测试历史记忆）
+        print("\n【第三轮对话】")
+        test_query_3 = "那我适合什么颜色的衣服？"
+        print(f"  用户提问: {test_query_3}")
+        print("-" * 50)
+        try:
+            result_3 = conversation_chain.invoke(
+                {"input": test_query_3},
+                config=session_config
+            )
+            print(f"✓ 第三轮对话成功")
+            print(f"  回答: {result_3}")
+            print("  说明: 模型应该能够结合之前的身高体重信息给出建议")
+        except Exception as e:
+            print(f"  注意: 查询时出现异常: {str(e)}")
+        print("-" * 50)
         
         print("\n" + "=" * 50)
         print("测试完成！")
         print("=" * 50)
+        print("\n说明:")
+        print("- 会话历史记录已保存到文件中，程序重启后仍然保留")
+        print(f"- 会话文件路径: {os.path.join(rag_service.storage_path, session_id)}")
         
     except Exception as e:
         print(f"\n❌ 测试失败: {str(e)}")
