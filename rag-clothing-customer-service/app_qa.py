@@ -55,13 +55,20 @@ def list_sessions() -> list[str]:
     storage_path = get_storage_path()
     if not os.path.exists(storage_path):
         return []
-    return sorted(
-        [
-            fname
-            for fname in os.listdir(storage_path)
-            if os.path.isfile(os.path.join(storage_path, fname))
-        ]
+    # 按照会话文件的「最后修改时间」倒序排序：
+    # - 最近有聊天更新的会话排在最上方
+    # - 新建会话在第一次产生聊天记录并持久化后，会话文件会被创建，
+    #   此时该会话会自动出现在列表最上方
+    files = [
+        fname
+        for fname in os.listdir(storage_path)
+        if os.path.isfile(os.path.join(storage_path, fname))
+    ]
+    files.sort(
+        key=lambda fname: os.path.getmtime(os.path.join(storage_path, fname)),
+        reverse=True,
     )
+    return files
 
 
 def ensure_session_state_for_session(session_id: str):
@@ -136,38 +143,56 @@ def sidebar_session_manager():
 
     # 新建会话按钮
     if st.sidebar.button("➕ 新建会话"):
-        st.session_state.current_session_id = new_session_id()
-        ensure_session_state_for_session(st.session_state.current_session_id)
-        st.sidebar.success(f"已创建新会话：{st.session_state.current_session_id}")
+        new_id = new_session_id()
+        st.session_state.current_session_id = new_id
+        ensure_session_state_for_session(new_id)
+        # 标记当前处于“新建且未持久化”的会话状态，侧边栏单选框暂不选中任何历史会话
+        st.session_state["in_new_session"] = True
+        # 清除会话选择器的缓存状态，避免覆盖新会话
+        if "session_selector" in st.session_state:
+            del st.session_state["session_selector"]
+        st.sidebar.success(f"已创建新会话：{new_id}")
 
     # 会话选择列表：**仅展示已有持久化文件的会话**
     # 新建会话在产生聊天记录（被持久化）之前，不会出现在列表中
     display_sessions = existing_sessions.copy()
 
+    # 是否处于“新建且未持久化”的会话：
+    # 当前会话 ID 不在已存在会话列表中，且显式标记为 in_new_session=True
+    in_new_session = (
+        st.session_state.get("in_new_session", False)
+        and st.session_state.current_session_id not in display_sessions
+    )
+
+    if in_new_session:
+        # 当前为新建会话，但历史会话列表仍然展示，只是都不高亮
+        st.sidebar.caption("当前为新建会话，尚未出现在会话列表中。")
+
     if display_sessions:
-        # 侧边栏选择器使用单独的 session_state 键，避免与当前会话 ID 冲突
-        if "session_selector" not in st.session_state:
-            # 如果当前会话已经有持久化文件，则默认选中它；否则选列表中的第一个
-            if st.session_state.current_session_id in display_sessions:
-                st.session_state.session_selector = st.session_state.current_session_id
+        st.sidebar.markdown("#### 历史会话")
+        for sid in display_sessions:
+            is_active = (not in_new_session) and (
+                sid == st.session_state.current_session_id
+            )
+            # 用不同样式区分当前会话 / 其他会话
+            label = f"🗂 {sid}"
+            if is_active:
+                # 当前会话用强调样式显示
+                st.sidebar.markdown(
+                    f"<div style='padding:4px 8px;border-radius:6px;background-color:#1f6feb;color:white;font-weight:600;'>{label}</div>",
+                    unsafe_allow_html=True,
+                )
             else:
-                st.session_state.session_selector = display_sessions[0]
-
-        try:
-            index = display_sessions.index(st.session_state.session_selector)
-        except ValueError:
-            index = 0
-
-        selected = st.sidebar.radio(
-            "选择会话",
-            display_sessions,
-            index=index,
-            key="session_selector",
-        )
-
-        # 当用户在侧边栏选择会话时，切换当前会话 ID
-        if selected != st.session_state.current_session_id:
-            st.session_state.current_session_id = selected
+                # 其他会话显示为按钮，点击即可切换
+                if st.sidebar.button(
+                    label,
+                    key=f"session_btn_{sid}",
+                    use_container_width=True,
+                ):
+                    st.session_state.current_session_id = sid
+                    st.session_state["in_new_session"] = False
+                    # 立即重新运行脚本，使会话切换在一次点击后立刻生效
+                    st.rerun()
 
     st.sidebar.caption(f"当前会话 ID：`{st.session_state.current_session_id}`")
 
@@ -254,6 +279,14 @@ def main():
 
             # 使用 Streamlit 原生流式输出
             message_placeholder.write_stream(stream_answer)
+
+            # 任意会话在完成一轮问答后：
+            # - 底层 FileChatMessageHistory 已经将当前会话写入/更新到文件
+            # - 触发一次 rerun，让侧边栏重新调用 list_sessions() 并按 mtime 排序
+            #   这样当前会话会立即移动到会话列表最上方，而不需要手动刷新
+            if st.session_state.get("in_new_session", False):
+                st.session_state["in_new_session"] = False
+            st.rerun()
 
 
 if __name__ == "__main__":
