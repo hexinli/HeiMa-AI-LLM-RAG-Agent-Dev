@@ -140,25 +140,34 @@ def sidebar_session_manager():
         ensure_session_state_for_session(st.session_state.current_session_id)
         st.sidebar.success(f"已创建新会话：{st.session_state.current_session_id}")
 
-    # 会话选择下拉框（包含当前会话，即使它还没有对应文件）
+    # 会话选择列表：**仅展示已有持久化文件的会话**
+    # 新建会话在产生聊天记录（被持久化）之前，不会出现在列表中
     display_sessions = existing_sessions.copy()
-    if st.session_state.current_session_id not in display_sessions:
-        display_sessions.insert(0, st.session_state.current_session_id)
 
     if display_sessions:
-        # 使用单选列表而不是下拉框，让会话列表一目了然
-        # 通过 key="current_session_id" 让组件与会话 ID 直接绑定，避免需要点击两次才能切换
+        # 侧边栏选择器使用单独的 session_state 键，避免与当前会话 ID 冲突
+        if "session_selector" not in st.session_state:
+            # 如果当前会话已经有持久化文件，则默认选中它；否则选列表中的第一个
+            if st.session_state.current_session_id in display_sessions:
+                st.session_state.session_selector = st.session_state.current_session_id
+            else:
+                st.session_state.session_selector = display_sessions[0]
+
         try:
-            index = display_sessions.index(st.session_state.current_session_id)
+            index = display_sessions.index(st.session_state.session_selector)
         except ValueError:
             index = 0
 
-        st.sidebar.radio(
+        selected = st.sidebar.radio(
             "选择会话",
             display_sessions,
             index=index,
-            key="current_session_id",
+            key="session_selector",
         )
+
+        # 当用户在侧边栏选择会话时，切换当前会话 ID
+        if selected != st.session_state.current_session_id:
+            st.session_state.current_session_id = selected
 
     st.sidebar.caption(f"当前会话 ID：`{st.session_state.current_session_id}`")
 
