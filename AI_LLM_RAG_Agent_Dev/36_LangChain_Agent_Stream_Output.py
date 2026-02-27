@@ -160,6 +160,8 @@ def stream_agent_messages(agent: Any, user_question: str) -> None:
 
     final_answer_parts: List[str] = []
     chunk_count = 0
+    # 记录当前已经“看过”的消息数量，避免在 values 模式下重复打印
+    seen_len = 0
 
     for chunk in stream:
         chunk_count += 1
@@ -167,16 +169,21 @@ def stream_agent_messages(agent: Any, user_question: str) -> None:
         if not messages:
             continue
 
-        latest_message: BaseMessage = messages[-1]
+        # 本次 chunk 新增的消息（相对于上一个 chunk）
+        new_messages: List[BaseMessage] = messages[seen_len:]
+        seen_len = len(messages)
 
-        # 打印当前最新一条消息的大致含义
-        # print(f"最新一条消息：{latest_message}")
-        pretty_print_latest_message(latest_message, chunk_index=chunk_count)
+        if not new_messages:
+            continue
 
-        # 如果是自然语言内容，则顺便拼接到最终答案中
-        content = getattr(latest_message, "content", None)
-        if isinstance(content, str) and content:
-            final_answer_parts.append(content)
+        for msg in new_messages:
+            # 打印当前新增消息的大致含义
+            pretty_print_latest_message(msg, chunk_index=chunk_count)
+
+            # 如果是自然语言内容，则顺便拼接到最终答案中
+            content = getattr(msg, "content", None)
+            if isinstance(content, str) and content:
+                final_answer_parts.append(content)
 
     elapsed_time = time.time() - start_time
 
