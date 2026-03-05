@@ -125,8 +125,14 @@ All source code and examples are my own notes and practice code, not the officia
   - **注意 Note:**
     - `.env` 文件已添加到 `.gitignore`，不会被提交到版本库，请放心填写真实密钥。  
       `.env` file is in `.gitignore` and will not be committed to the repository, so you can safely add your real API keys.
-    - 项目代码会优先读取 `DASHSCOPE_API_KEY`，如果未设置则回退到 `API_KEY`。  
-      The code will first try to read `DASHSCOPE_API_KEY`, and fall back to `API_KEY` if not set.
+    - **重要：本项目仅支持阿里云 DashScope API Key**  
+      **Important: This project only supports Alibaba Cloud DashScope API Key**
+      - 项目代码会优先读取 `DASHSCOPE_API_KEY`，如果未设置则回退到 `API_KEY`。  
+        The code will first try to read `DASHSCOPE_API_KEY`, and fall back to `API_KEY` if not set.
+      - **即使使用 `API_KEY` 作为变量名，也必须填入阿里云 DashScope 的 API Key，而不是 OpenAI 的 API Key。**  
+        **Even if you use `API_KEY` as the variable name, you must fill in Alibaba Cloud DashScope API Key, NOT OpenAI API Key.**
+      - 本项目使用 `DashScopeEmbeddings` 和 `ChatTongyi`（通义千问），不支持 OpenAI 模型。  
+        This project uses `DashScopeEmbeddings` and `ChatTongyi` (Tongyi Qianwen), and does not support OpenAI models.
 
 - **安装依赖 Install Dependencies**
   - 首次使用前，请先安装项目所需的 Python 依赖包：  
