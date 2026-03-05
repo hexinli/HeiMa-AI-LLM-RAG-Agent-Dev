@@ -1,0 +1,25 @@
+envs:
+  default:
+    client:
+      # 向量库类型，目前计划使用 chromadb
+      type: chromadb
+      # 持久化目录，基于项目根目录，相对路径即可
+      persist_directory: data/chroma
+
+    collection:
+      # 向量集合名称
+      name: robot_qa
+      # 附加的元数据，可用于区分不同 embedding 模型版本等
+      metadata:
+        embedding_model_name: text-embedding-v4
+
+  dev:
+    client:
+      # 开发环境下使用独立的索引目录，避免污染线上索引
+      persist_directory: data/chroma_dev
+
+  prod:
+    client:
+      # 生产环境索引目录，可根据部署环境调整为挂载磁盘路径
+      persist_directory: data/chroma_prod
+
