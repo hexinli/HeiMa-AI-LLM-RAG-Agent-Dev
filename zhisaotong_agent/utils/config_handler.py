@@ -261,20 +261,47 @@ class ChromaConfig:
 @dataclass
 class PromptsConfig:
     """
-    提示词配置，内部使用 dict 承载，便于灵活迭代。
+    提示词配置，使用文件路径方式存储提示词位置。
+
+    设计说明：
+    - prompt_paths: 存储提示词文件的相对路径（相对于项目根目录）
+    - debug: 调试相关配置
+    - 提示词内容通过路径加载，便于版本控制和统一管理
     """
 
-    system_prompts: Dict[str, str] = field(default_factory=dict)
-    templates: Dict[str, str] = field(default_factory=dict)
+    prompt_paths: Dict[str, str] = field(default_factory=dict)
     debug: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "PromptsConfig":
         return cls(
-            system_prompts=dict(data.get("system_prompts", {}) or {}),
-            templates=dict(data.get("templates", {}) or {}),
+            prompt_paths=dict(data.get("prompt_paths", {}) or {}),
             debug=dict(data.get("debug", {}) or {}),
         )
+
+    def get_prompt_path(self, key: str) -> Optional[str]:
+        """
+        获取指定 key 的提示词文件路径。
+
+        :param key: 提示词配置的 key，例如 "main_prompt_path"、"rag_summarize_prompt_path"、"report_prompt_path"
+        :return: 提示词文件的相对路径，如果不存在则返回 None
+        """
+        return self.prompt_paths.get(key)
+
+    def get_prompt_abs_path(self, key: str) -> Optional[str]:
+        """
+        获取指定 key 的提示词文件绝对路径。
+
+        :param key: 提示词配置的 key，例如 "main_prompt_path"、"rag_summarize_prompt_path"、"report_prompt_path"
+        :return: 提示词文件的绝对路径，如果不存在则返回 None
+        """
+        rel_path = self.get_prompt_path(key)
+        if rel_path is None:
+            return None
+        try:
+            return get_abs_path(rel_path)
+        except Exception:
+            return None
 
 
 @dataclass
