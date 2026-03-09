@@ -8,6 +8,7 @@ from langchain_community.chat_models.tongyi import BaseChatModel, ChatTongyi
 from langchain_community.embeddings import DashScopeEmbeddings
 
 from zhisaotong_agent.utils.config_handler import RagConfig, load_rag_config
+from zhisaotong_agent.utils.api_key import init_dashscope_api_key
 
 
 ModelT = TypeVar("ModelT")
@@ -72,4 +73,22 @@ def get_embed_model() -> Embeddings:
         _embed_model = model
     return _embed_model
 
+
+if __name__ == "__main__":
+    """
+    简单自测：
+    - 在项目根目录运行：
+        python -m zhisaotong_agent.model.factory
+    - 用于快速验证 rag 配置与 DashScope 相关环境变量是否正确，
+      以及聊天模型 / Embedding 模型是否能成功初始化。
+    """
+    ok = init_dashscope_api_key()
+    if not ok:
+        raise SystemExit("DASHSCOPE_API_KEY 未正确配置，无法初始化模型。")
+
+    chat_model = get_chat_model()
+    embed_model = get_embed_model()
+
+    print("Chat model instance:", chat_model)
+    print("Embedding model instance:", embed_model)
 
