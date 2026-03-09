@@ -23,8 +23,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from .config_handler import load_prompts_config
-from .logger_handler import get_logger
+from zhisaotong_agent.utils.config_handler import load_prompts_config
+from zhisaotong_agent.utils.logger_handler import get_logger
 
 logger = get_logger(__name__)
 
@@ -142,7 +142,10 @@ if __name__ == "__main__":
         python -m zhisaotong_agent.utils.prompt_loader
     """
     import os
-    from .config_handler import ENV_VAR_NAME, DEFAULT_ENV_NAME
+    from zhisaotong_agent.utils.config_handler import (
+        ENV_VAR_NAME,
+        DEFAULT_ENV_NAME,
+    )
 
     current_env = os.getenv(ENV_VAR_NAME, DEFAULT_ENV_NAME)
     print(f"当前 APP_ENV = {current_env!r}")

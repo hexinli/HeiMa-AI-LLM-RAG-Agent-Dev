@@ -15,7 +15,7 @@ from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from typing import Optional
 
-from .path_tool import get_abs_path
+from zhisaotong_agent.utils.path_tool import get_abs_path
 
 # 日志根目录：项目根目录下的 logs 目录
 LOG_ROOT = get_abs_path("logs")

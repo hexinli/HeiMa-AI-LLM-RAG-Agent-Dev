@@ -47,7 +47,7 @@ from typing import Any, Dict, Mapping, Optional
 
 import yaml
 
-from .path_tool import get_abs_path
+from zhisaotong_agent.utils.path_tool import get_abs_path
 
 
 ENV_VAR_NAME = "APP_ENV"

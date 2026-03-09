@@ -22,8 +22,8 @@ from typing import Iterable, List, Tuple
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.documents import Document
 
-from .logger_handler import get_logger
-from .path_tool import get_abs_path
+from zhisaotong_agent.utils.logger_handler import get_logger
+from zhisaotong_agent.utils.path_tool import get_abs_path
 
 
 logger = get_logger(__name__)
