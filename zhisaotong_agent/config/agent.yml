@@ -1,5 +1,7 @@
 envs:
   default:
+    # 外部数据文件路径（相对于项目根目录），供 usage_report 等工具使用
+    external_data_path: data/external/records.csv
     agent:
       # 智能体类型，目前规划为 ReAct
       type: react

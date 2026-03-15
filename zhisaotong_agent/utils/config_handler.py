@@ -392,10 +392,12 @@ class AgentToolConfig:
 class AgentConfig:
     """
     智能体相关配置：
+    - external_data_path: 外部数据文件路径（相对于项目根），供 usage_report 等工具使用；
     - agent: 类型、迭代次数、可用工具等；
     - conversation: 对话相关参数（最大轮数、语言等）。
     """
 
+    external_data_path: str = "data/external/records.csv"
     agent_type: str = "react"
     max_iterations: int = 10
     tools: Dict[str, AgentToolConfig] = field(default_factory=dict)
@@ -416,11 +418,22 @@ class AgentConfig:
                 tools[tool_cfg.name] = tool_cfg
 
         return cls(
+            external_data_path=str(
+                data.get("external_data_path", cls.external_data_path)
+            ),
             agent_type=agent_section.get("type", cls.agent_type),
             max_iterations=int(agent_section.get("max_iterations", cls.max_iterations)),
             tools=tools,
             conversation=dict(conv_section),
         )
+
+    def get_external_data_abs_path(self) -> str:
+        """
+        获取外部数据文件的绝对路径。
+
+        :return: external_data_path 对应的绝对路径，便于直接用于文件读写。
+        """
+        return get_abs_path(self.external_data_path)
 
 
 @dataclass
