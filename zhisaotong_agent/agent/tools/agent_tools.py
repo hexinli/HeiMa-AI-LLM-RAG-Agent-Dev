@@ -69,6 +69,7 @@ def _load_external_data_from_file(file_path: str) -> Dict[str, Dict[str, Dict[st
         next(reader, None)  # 跳过表头
         for row in reader:
             if len(row) < 6:
+                logger.warning("外部数据行列数不足，已跳过。raw_row=%r", row)
                 continue
             user_id = row[0].strip().strip('"')
             feature = row[1].strip().strip('"')
