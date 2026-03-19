@@ -141,3 +141,85 @@ def report_prompt_switch(request: ModelRequest):
         return load_report_prompts()
     return load_system_prompts()
 
+
+if __name__ == "__main__":
+    """
+    简单自测代码（smoke test）：
+    - 验证脱敏与日志预览函数不会抛异常；
+    - 用最小 dummy 对象验证 report 标记与日志函数的健壮性；
+    - 提示词加载依赖 config/prompts 配置文件，若缺失会打印友好错误。
+
+    运行方式（在项目根目录）：
+        python -m zhisaotong_agent.agent.tools.middleware
+    """
+
+    class _DummyRuntime:
+        def __init__(self):
+            self.context: dict[str, Any] = {}
+
+    class _DummyToolRequest:
+        def __init__(self, name: str, args: Any):
+            self.tool_call = {"name": name, "args": args}
+            self.runtime = _DummyRuntime()
+
+    class _DummyMsg:
+        def __init__(self, content: Any):
+            self.content = content
+
+    print("== middleware smoke test ==")
+    print("safe_preview:", _safe_preview({"token": "abc", "k": "v", "text": "x" * 10}))
+
+    dummy_req = _DummyToolRequest(
+        "fill_context_for_report",
+        {"user_id": "1001", "token": "should-not-leak", "note": "x" * 5000},
+    )
+
+    def _dummy_handler(_req: Any):
+        return ToolMessage(content="ok", tool_call_id="smoke_test")
+
+    try:
+        # 这些函数上方有 langchain/langgraph 的装饰器。
+        # 装饰器可能会把“函数”替换成“中间件对象”，导致它在运行时不再是可直接调用的普通函数。
+        # 一种常见做法是通过 functools.wraps 保留原函数在 __wrapped__ 里；
+        # 因此这里尽量尝试调用 __wrapped__，但前提是它确实存在且可调用。
+        _monitor = getattr(monitor_tool, "__wrapped__", None)
+        if callable(_monitor):
+            _monitor(dummy_req, _dummy_handler)  # type: ignore[misc]
+            print("monitor_tool(__wrapped__): ok; runtime.context['report'] =", dummy_req.runtime.context.get("report"))
+        else:
+            # 如果没有 __wrapped__，说明装饰器没有保留原函数，或装饰后对象不是可调用函数。
+            # 这种情况下跳过调用测试，避免自测依赖框架内部实现细节而误报。
+            print("monitor_tool: decorated object is not callable; skip call smoke test")
+    except Exception as e:
+        print("monitor_tool: failed:", e)
+
+    try:
+        _before = getattr(log_before_model, "__wrapped__", None)
+        # 同上：尽量调用被装饰器包装前的原函数进行 smoke test。
+        if callable(_before):
+            _before({"messages": [_DummyMsg(" hello ")]}, _DummyRuntime())  # type: ignore[misc]
+            print("log_before_model(__wrapped__): ok")
+        else:
+            # 保持自测稳健性：装饰器实现变化时不会导致自测崩溃。
+            print("log_before_model: decorated object is not callable; skip call smoke test")
+    except Exception as e:
+        print("log_before_model: failed:", e)
+
+    class _DummyModelRequest:
+        def __init__(self, report_flag: bool):
+            self.runtime = _DummyRuntime()
+            self.runtime.context["report"] = report_flag
+
+    for flag in (False, True):
+        try:
+            # report_prompt_switch 同样可能被框架装饰器包装为不可直接调用对象。
+            _switch = getattr(report_prompt_switch, "__wrapped__", None)
+            if callable(_switch):
+                prompt = _switch(_DummyModelRequest(flag))  # type: ignore[misc]
+                print(f"report_prompt_switch(__wrapped__)(report={flag}): ok; prompt_len={len(prompt)}")
+            else:
+                # 依赖最少：没有 __wrapped__ 就不调用，只提示跳过。
+                print(f"report_prompt_switch: decorated object is not callable; skip call smoke test (report={flag})")
+        except Exception as e:
+            print(f"report_prompt_switch(report={flag}): failed:", e)
+
