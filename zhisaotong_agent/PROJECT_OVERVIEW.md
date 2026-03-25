@@ -16,12 +16,13 @@
 
 ### 二、代码目录结构
 
-> 外层目录名 `zhisaotong_agent/` 为仓库中的子项目根；在其中有 `pyproject.toml`，可执行 `pip install -e .` 做可编辑安装。Python 包源码在 `src/zhisaotong_agent/`（import 名 `zhisaotong_agent`）。
+> 外层目录名 `zhisaotong_agent/` 为仓库中的子项目根；在其中有 `pyproject.toml`，可执行 `pip install -e .` 做可编辑安装。Python 包源码在 `src/zhisaotong_agent/`（import 名 `zhisaotong_agent`）。本说明文件 `PROJECT_OVERVIEW.md` 位于子项目根目录，与 `pyproject.toml` 同级。
 
 ```text
 zhisaotong_agent/                 # 子项目根（含构建配置）
   ├─ pyproject.toml               # 包元数据、依赖、setuptools 配置
   ├─ MANIFEST.in                  # 发行包时包含的非 .py 资源
+  ├─ PROJECT_OVERVIEW.md          # 项目说明（本文件）
   └─ src/
        └─ zhisaotong_agent/       # 可安装包根目录（import 名同此）
             ├─ agent/             # 智能体相关逻辑
@@ -38,8 +39,7 @@ zhisaotong_agent/                 # 子项目根（含构建配置）
             │  ├─ rag_service.py
             │  └─ vector_store.py
             ├─ utils/             # 通用工具（config_handler、path_tool 等）
-            ├─ app.py             # Streamlit 入口
-            └─ PROJECT_OVERVIEW.md
+            └─ app.py             # Streamlit 入口
 ```
 
 ### 三、模块间逻辑架构（Mermaid）
@@ -89,4 +89,3 @@ flowchart LR
 - **第二阶段**：实现向量库构建与 RAG 服务（`rag_service.py`、`vector_store.py`），并导入扫地机器人知识文档。
 - **第三阶段**：实现智能体逻辑（`ReactAgent` 及工具函数），打通从前端到 RAG 的完整闭环。
 - **第四阶段**：接入真实用户数据与报表生成能力，迭代优化对话体验与报告模板。
-

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "zhisaotong-agent"
 version = "0.1.0"
 description = "扫地机器人智能客服 Agent（RAG + Streamlit）"
-readme = { file = "src/zhisaotong_agent/PROJECT_OVERVIEW.md", content-type = "text/markdown" }
+readme = { file = "PROJECT_OVERVIEW.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 dependencies = [
     "openai>=1.0.0",

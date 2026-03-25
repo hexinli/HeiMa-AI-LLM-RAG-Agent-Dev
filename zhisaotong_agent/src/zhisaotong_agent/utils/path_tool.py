@@ -33,10 +33,10 @@ if __name__ == "__main__":
 
     # 1. 测试相对路径转换
     rel_examples = [
-        "PROJECT_OVERVIEW.md",          # 根目录下已存在的文件（根据当前项目结构）
-        "data",                         # 根目录下已有的 data 目录
+        "config/agent.yml",             # 包根下配置文件
+        "data",                         # 包根下 data 目录
         "utils/path_tool.py",           # 本文件自身
-        "./data/../PROJECT_OVERVIEW.md" # 含有 . 和 .. 的相对路径
+        "./data/../config/agent.yml",   # 含 . 与 .. 的相对路径
     ]
     for rel in rel_examples:
         # 这里的 !r 表示使用 repr() 的形式显示变量值（带引号、便于调试区分空字符串等）
